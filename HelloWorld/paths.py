@@ -1,6 +1,6 @@
 import os
 
-flexsim = os.path.abspath("C:/Program Files/FlexSim 2024/program/flexsim.exe")
+flexsim = os.path.abspath("C:/Program Files/FlexSim 2025/program/flexsim.exe")
 model = os.path.join(os.path.dirname(__file__), "HelloWorld.fsm")
 tensorboard = os.path.join(os.path.dirname(__file__), "tensorboard")
 agent = os.path.join(os.path.dirname(__file__), "HelloWorld.zip")
