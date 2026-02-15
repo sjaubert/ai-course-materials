@@ -44,9 +44,11 @@ Vous devriez avoir une ligne continue de gauche à droite.
 
 **StockMatiere (Source) :**
 
-- Inter-Arrival Time : `0` (génère tout au démarrage)
-- Arrival Quantity : `20`
-- Arrival Schedule → Stop After : `1` arrival
+- Arrival Style : `Arrival Schedule`
+- Edit Arrival Schedule :
+  - Time : `0`
+  - Quantity : `20`
+- Repeat Schedule : `Unchecked` (ou décoché)
 
 **Poste1 (Processor) :**
 
@@ -88,20 +90,23 @@ Ajoutez 3 **Queues** en dessous de la ligne principale :
 
 ---
 
-### Étape 2.2 : Configurer l'affichage des cartes
+### Étape 2.2 : Configurer l'apparence des Plannings
 
-Pour chaque PlanningK :
+Pour que les Queues (files d'attente) ressemblent à des tableaux Kanban :
 
-1. Double-clic → onglet **Visuals**
-2. Cocher **Draw Content As Shapes**
-3. Shape : **Box**
-4. Scale X/Y/Z : `0.3 / 0.3 / 0.05`
+1. Cliquez sur chaque PlanningK.
+2. Dans **Quick Properties** (à droite), modifiez la taille (Size) pour former un "tableau" :
+   - `X=2.0`, `Y=0.5`, `Z=0.1`
+3. Dans la section **Queue** -> **Item Placement** :
+   - Choisissez `Stack Horizontally` ou `Stack Into Line` (pour aligner les cartes côte à côte).
 
-**Couleurs distinctives :**
+**Couleurs de fond (optionnel) :**
 
-- PlanningK1 : Bleu
-- PlanningK2 : Jaune  
-- PlanningK3 : Rouge
+- PlanningK1 : Bleu clair
+- PlanningK2 : Jaune clair
+- PlanningK3 : Rouge clair
+
+*(Note : La forme et la couleur des cartes elles-mêmes seront définies par le script à l'étape 3.2)*
 
 ---
 
@@ -117,28 +122,58 @@ Pour chaque PlanningK :
 
 ---
 
-### Étape 3.2 : Script OnReset (Initialiser les cartes)
+### Étape 3.2 : Script OnReset (Initialiser les cartes via le Modèle)
 
-1. `Tools → Model Parameters` ou clic droit sur le modèle
-2. Ajouter un trigger **OnReset**
+Ce script doit s'exécuter globalement quand on appuie sur le bouton **Reset** de la simulation. Il ne se configure pas sur un objet 3D spécifique (comme une machine), mais directement sur le modèle.
+
+1. Allez dans l'onglet **Toolbox** (à gauche, à côté de Library).
+2. Cliquez sur le **+** (vert) > **Modeling Logic** > **Model Trigger**.
+3. Dans la fenêtre qui s'ouvre, cliquez sur le **+** (vert) à côté de *Triggers*.
+4. Choisissez **On Reset**.
+5. Cliquez sur l'icône de code (parchemin) à droite de la ligne *On Reset* pour ouvrir l'éditeur de code.
+6. Copiez-collez le script suivant :
 
 ```flexscript
 // Créer 5 cartes Kanban par poste au démarrage
+treenode boxClass = Model.find("Tools/FlowItemBin/Box"); // Récupérer la référence à l'objet Box du modèle
+
+if (!boxClass) {
+    // Si pas trouvé, essayer la librairie standard (Plan B)
+    boxClass = library().find("?Box");
+}
+
+if (!boxClass) {
+    msg("Erreur", "Impossible de trouver l'objet 'Box' dans le modèle (FlowItemBin) ou la Library.");
+    return 0;
+}
+
 for (int poste = 1; poste <= 3; poste++) {
     Object planning;
     if (poste == 1) planning = Model.find("PlanningK1");
     if (poste == 2) planning = Model.find("PlanningK2");
     if (poste == 3) planning = Model.find("PlanningK3");
     
+    if (!planning) {
+        msg("Erreur", "PlanningK" + string.fromNum(poste) + " non trouvé.");
+        continue;
+    }
+    
     for (int i = 1; i <= 5; i++) {
-        Object carte = createinstance(getclass("Box"));
-        carte.setLabel("Poste", poste);
-        carte.setLabel("NumCarte", i);
-        carte.setSize(0.3, 0.3, 0.05);
-        if (poste == 1) carte.setColor(colorblue);
-        if (poste == 2) carte.setColor(coloryellow);
-        if (poste == 3) carte.setColor(colorred);
-        moveobject(carte, planning);
+        // createinstance(Class, Container)
+        Object carte = createinstance(boxClass, planning);
+        
+        if (carte) {
+            // Configuration des labels (via commande setlabel, plus robuste)
+            setlabel(carte, "Poste", poste);
+            setlabel(carte, "NumCarte", i);
+            
+            // Taille et Couleur
+            carte.size = [0.3, 0.3, 0.05];
+            
+            if (poste == 1) carte.color = Color.blue;
+            if (poste == 2) carte.color = Color.yellow;
+            if (poste == 3) carte.color = Color.red;
+        }
     }
 }
 ```
@@ -155,24 +190,18 @@ Object current = ownerobject(c);
 Object planning = Model.find("PlanningK3");
 
 // Vérifier si une carte Kanban est disponible
-if (getcontentsize(planning) == 0) {
+// (Syntaxe 2024 : accès aux subnodes)
+if (planning.subnodes.length == 0) {
     // Pas de carte = pas de production, renvoyer la pièce au buffer
     return 0;  // Bloquer l'entrée
 }
 
-// Prendre une carte du planning
-Object carte = last(planning);
+// Prendre une carte du planning (la dernière entrée)
+Object carte = planning.subnodes[planning.subnodes.length];
 moveobject(carte, current);  // Attacher la carte à la pièce
 ```
 
-**Poste3 - Trigger "OnExit" :**
-
-```flexscript
-Object item = param(1);
-
-// La carte accompagne le produit vers le stock PF
-// Elle sera libérée quand le client consomme
-```
+*(Note : Au moment de la sortie (OnExit), la carte reste simplement attachée à la pièce et part avec elle vers le StockPF.)*
 
 ---
 
@@ -182,23 +211,34 @@ Object item = param(1);
 
 ```flexscript
 Object item = param(1);
+treenode boxClass = Model.find("Tools/FlowItemBin/Box");
+
+if (!boxClass) boxClass = library().find("?Box"); // Plan B
+if (!boxClass) return 0; // Sécurité
 
 // Récupérer la carte attachée et la renvoyer au planning
-int poste = item.getLabel("DernierPoste");
-Object carte = createinstance(getclass("Box"));
-carte.setLabel("Poste", 3);
-carte.setSize(0.3, 0.3, 0.05);
-carte.setColor(colorred);
+// Ici on simplifie en recréant une carte virtuelle pour l'exercice
 
-Object planning = Model.find("PlanningK3");
-moveobject(carte, planning);
+Object planning3 = Model.find("PlanningK3");
+if (planning3) {
+    Object carte = createinstance(boxClass, planning3);
+    if (carte) {
+        setlabel(carte, "Poste", 3);
+        carte.size = [0.3, 0.3, 0.05];
+        carte.color = Color.red;
+    }
+}
 
 // Signaler le besoin en amont (cascade Kanban)
 // Envoyer une carte au PlanningK2
-Object carte2 = createinstance(getclass("Box"));
-carte2.setColor(coloryellow);
-carte2.setSize(0.3, 0.3, 0.05);
-moveobject(carte2, Model.find("PlanningK2"));
+Object planning2 = Model.find("PlanningK2");
+if (planning2) {
+    Object carte2 = createinstance(boxClass, planning2);
+    if (carte2) {
+        carte2.color = Color.yellow;
+        carte2.size = [0.3, 0.3, 0.05];
+    }
+}
 ```
 
 ---
